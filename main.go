@@ -8,6 +8,7 @@ import (
     "io/ioutil"
 	//"encoding/json"
 	"errors"
+	"strings"
 )
 
 func checkIfError(e error) {
@@ -47,7 +48,7 @@ func parseAppMigrationLog () map[string]MigrationLog{
 			lineOfLog := scanner.Text()
 			isProblematicApp := isProblematicAppRegexp.FindAllStringSubmatch(lineOfLog, -2)
 			if len(isProblematicApp) != 0 {
-				apiKey := isProblematicApp[0][1]
+				apiKey := strings.TrimSpace(isProblematicApp[0][1])
 				problematicAppsList[apiKey] = MigrationLog{apiKey, apiKey, "", 0, true}
 				fmt.Println(isProblematicApp[0][1]);
 			}
@@ -57,12 +58,12 @@ func parseAppMigrationLog () map[string]MigrationLog{
 }
 
 func main() {
-    files, err := ioutil.ReadDir("E:\\googleDrive\\Telerik\\log")
+    files, err := ioutil.ReadDir("E:\\googleDrive\\Telerik\\apiLog")
 	checkIfError(err)
 	problematicAppsList := parseAppMigrationLog();
 
     for _, f := range files {
-		file, err := os.Open("E:\\googleDrive\\Telerik\\log\\" + f.Name())
+		file, err := os.Open("E:\\googleDrive\\Telerik\\apiLog\\" + f.Name())
 		checkIfError(err)
 
         scanner := bufio.NewScanner(file)
@@ -71,7 +72,7 @@ func main() {
 
         // Assemble regexp
         isLineMigrationRelated := regexp.MustCompile("app-migration")
-        migrationStartRegex := regexp.MustCompile("Start migration of application:(.{16})")
+        migrationStartRegex := regexp.MustCompile("Start migration of application: (.{16})")
         migrationEndRegex := regexp.MustCompile("Finished migration of app:")
 
         migrationStartFound := false
