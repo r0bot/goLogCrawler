@@ -9,6 +9,8 @@ import (
 	//"encoding/json"
 	"errors"
 	"strings"
+	"compress/gzip"
+	"encoding/json"
 )
 
 func checkIfError(e error) {
@@ -20,7 +22,7 @@ func checkIfError(e error) {
 type MigrationLog struct {
 	Name string
 	ApiKey string
-	LogEntries string
+	LogEntries []string
 	ErrorSeverity int
 	processed bool
 }
@@ -35,13 +37,14 @@ func findLogForApp (mapToSearch map[string]MigrationLog, keyToSearch string) (Mi
 }
 
 func parseAppMigrationLog () map[string]MigrationLog{
-	files, err := ioutil.ReadDir("E:\\googleDrive\\Telerik\\migrationLog")
+
+	files, err := ioutil.ReadDir("./migrationLog")
 	checkIfError(err)
 	problematicAppsList := map[string]MigrationLog{};
 
 	isProblematicAppRegexp := regexp.MustCompile("Error while migrating app: (.{16})(?:.*)")
 	for _, f := range files {
-		file, err := os.Open("E:\\googleDrive\\Telerik\\migrationLog\\" + f.Name())
+		file, err := os.Open("./migrationLog/" + f.Name())
 		checkIfError(err)
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
@@ -49,8 +52,8 @@ func parseAppMigrationLog () map[string]MigrationLog{
 			isProblematicApp := isProblematicAppRegexp.FindAllStringSubmatch(lineOfLog, -2)
 			if len(isProblematicApp) != 0 {
 				apiKey := strings.TrimSpace(isProblematicApp[0][1])
-				problematicAppsList[apiKey] = MigrationLog{apiKey, apiKey, "", 0, true}
-				fmt.Println(isProblematicApp[0][1]);
+				problematicAppsList[apiKey] = MigrationLog{apiKey, apiKey, []string{}, 0, true}
+				//fmt.Println(isProblematicApp[0][1]);
 			}
 		}
 	}
@@ -58,22 +61,29 @@ func parseAppMigrationLog () map[string]MigrationLog{
 }
 
 func main() {
-    files, err := ioutil.ReadDir("E:\\googleDrive\\Telerik\\apiLog")
+	//readWriteAccessInt := syscall.O_RDWR
+    files, err := ioutil.ReadDir("./apiLog")
 	checkIfError(err)
 	problematicAppsList := parseAppMigrationLog();
 
     for _, f := range files {
-		file, err := os.Open("E:\\googleDrive\\Telerik\\apiLog\\" + f.Name())
+		file, err := os.Open("./apiLog/" + f.Name())
 		checkIfError(err)
+	    	defer file.Close()
 
-        scanner := bufio.NewScanner(file)
+    	gz, err := gzip.NewReader(file)
+
+	    defer gz.Close()
+
+	    scanner := bufio.NewScanner(gz)
 
 
 
-        // Assemble regexp
+	    // Assemble regexp
         isLineMigrationRelated := regexp.MustCompile("app-migration")
         migrationStartRegex := regexp.MustCompile("Start migration of application: (.{16})")
         migrationEndRegex := regexp.MustCompile("Finished migration of app:")
+	    isAppWithoutCollectionsRegex := regexp.MustCompile("No collections found for this app in the source")
 
         migrationStartFound := false
 	var currentLog = MigrationLog{}
@@ -97,22 +107,34 @@ func main() {
 			//If log entry is started and we have selected the correct log struct add to its logEntries
 			if migrationStartFound == true {
 				if currentLog.processed == true {
-					currentLog.LogEntries += lineOfLog
+					currentLog.LogEntries = append(currentLog.LogEntries,lineOfLog)
 				}
 
 				//If this is the end of log default all local vars and write to File
 				migrationEndData := migrationEndRegex.FindString(lineOfLog)
 				if migrationEndData != "" {
-					//out, err := json.Marshal(currentLog)
-					//if err != nil {
-					//	panic (err)
-					//}
-					//TODO actually write this to a file
-					fmt.Println(currentLog.LogEntries)
+					isWithoutCollection := false;
+					for _, v := range currentLog.LogEntries {
+						isWithoutCollectionasd := isAppWithoutCollectionsRegex.MatchString(v)
+						if isWithoutCollectionasd{
+							isWithoutCollection = true;
+						}
+					}
+					//
+					if !isWithoutCollection {
+						outputFile , err := os.Create("./output/output"+currentLog.Name+".txt")
+						out, err := json.MarshalIndent(currentLog, "", "    ")
+						if err != nil {
+							panic (err)
+						}
+						outputFile.Write(out)
+						outputFile.Close()
+					}
 
 					//default local vars
 					migrationStartFound = false
 					currentLog = MigrationLog{}
+
 				}
 			}
 
@@ -126,6 +148,6 @@ func main() {
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "reading standard input:", err)
 	}
-	defer file.Close()
+
 	}
 }
